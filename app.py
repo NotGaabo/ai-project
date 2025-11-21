@@ -1,6 +1,4 @@
 from flask import Flask, request, jsonify
-from pathlib import Path
-import PyPDF2
 import google.generativeai as genai
 import time
 
@@ -10,34 +8,13 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 
 app = Flask(__name__)
 
-def extract_text_from_pdf(pdf_path):
-    pdf_path = Path(pdf_path)
-    if not pdf_path.exists():
-        return None
-    try:
-        with pdf_path.open("rb") as file:
-            reader = PyPDF2.PdfReader(file)
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() or ""
-            return text if text.strip() else None
-    except Exception:
-        return None
+@app.route("/analyze_sales", methods=["POST"])
+def analyze_sales():
+    data = request.get_json()
+    if not data or "sales_text" not in data:
+        return jsonify({"error": "No se recibió el texto de ventas"}), 400
 
-@app.route("/upload_pdf", methods=["POST"])
-def upload_pdf():
-    if "file" not in request.files:
-        return jsonify({"error": "No se recibió ningún archivo"}), 400
-    
-    pdf_file = request.files["file"]
-    temp_path = "temp.pdf"
-    pdf_file.save(temp_path)
-    
-    pdf_text = extract_text_from_pdf(temp_path)
-    Path(temp_path).unlink()
-
-    if not pdf_text:
-        return jsonify({"error": "No se pudo leer el PDF"}), 500
+    sales_text = data["sales_text"]
 
     start_time = time.time()
     chat = model.start_chat()
@@ -45,7 +22,7 @@ def upload_pdf():
     prompt = f"""
 Eres un analista experto. Tienes un historial de ventas de los últimos 3 meses:
 
-{pdf_text}
+{sales_text}
 
 Tareas:
 1. Detecta productos sin ventas o con baja actividad.
@@ -91,8 +68,7 @@ Solo JSON válido.
     response = chat.send_message(prompt)
     end_time = time.time()
 
-    return jsonify(
-        response.text)
+    return jsonify({"result": response.text, "time_taken": end_time - start_time})
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
