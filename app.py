@@ -1,74 +1,45 @@
 from flask import Flask, request, jsonify
-import google.generativeai as genai
-import time
-
-# Configurar Google Generative AI
-genai.configure(api_key="AIzaSyBHM7xAhjqdrp_abnbKLfzcF7NrDbWK6L4")
-model = genai.GenerativeModel("gemini-2.0-flash")
+import json
 
 app = Flask(__name__)
 
 @app.route("/analyze_sales", methods=["POST"])
 def analyze_sales():
+    if not request.is_json:
+        return jsonify({"error": "Se esperaba JSON"}), 400
+    
     data = request.get_json()
-    if not data or "sales_text" not in data:
-        return jsonify({"error": "No se recibió el texto de ventas"}), 400
+    producto = data.get("producto_sugerir")
+    ventas = data.get("ventas_3_meses", [])
 
-    sales_text = data["sales_text"]
+    # Contar compras por cliente para calcular afinidad simple
+    clientes = {}
+    for venta in ventas:
+        cliente = venta.get("cliente")
+        if cliente not in clientes:
+            clientes[cliente] = 0
+        clientes[cliente] += sum([p.get("qty", 0) for p in venta.get("productos_comprados", [])])
 
-    start_time = time.time()
-    chat = model.start_chat()
+    # Normalizar a porcentaje de afinidad (máximo 100%)
+    max_compras = max(clientes.values(), default=1)
+    clientes_sugeridos = [
+        {
+            "ClienteId": idx+1,
+            "Nombre": nombre,
+            "Afinidad": f"{int(cantidad / max_compras * 100)}%"
+        } for idx, (nombre, cantidad) in enumerate(clientes.items())
+    ]
 
-    prompt = f"""
-Eres un analista experto. Tienes un historial de ventas de los últimos 3 meses:
+    result = [{
+        "Producto": producto.get("name"),
+        "Categoria": producto.get("categ_id"),
+        "ClienteVendedorId": producto.get("id"),
+        "ClientesSugeridos": clientes_sugeridos,
+        "ProductosRelacionados": [p["product_name"] for v in ventas for p in v.get("productos_comprados", []) if p["product_name"] != producto.get("name")],
+        # quitamos estrategia
+    }]
 
-{sales_text}
-
-Tareas:
-1. Detecta productos sin ventas o con baja actividad.
-2. Para cada producto genera:
-   - Nombre del producto
-   - Categoria
-   - ID ficticio de cliente principal
-   - Productos relacionados (3)
-   - Estrategia de reactivación
-   - Lista de clientes sugeridos con porcentaje de afinidad EN FORMATO:
-     [
-        {{
-          "ClienteId": "123",
-          "Nombre": "Cliente X",
-          "Afinidad": "85%"
-        }},
-        ...
-     ]
-
-IMPORTANTE:
-- La afinidad debe simular análisis real: porcentajes altos para clientes que compran productos similares.
-- El JSON debe respetar este formato:
-
-[
-  {{
-    "Producto": "NombreProducto",
-    "Categoria": "CategoriaProducto",
-    "ClienteVendedorId": "12345",
-    "ClientesSugeridos": [
-      {{ "ClienteId": "1", "Nombre": "Cliente A", "Afinidad": "90%" }},
-      {{ "ClienteId": "2", "Nombre": "Cliente B", "Afinidad": "75%" }},
-      {{ "ClienteId": "3", "Nombre": "Cliente C", "Afinidad": "60%" }}
-    ],
-    "ProductosRelacionados": ["Prod1", "Prod2", "Prod3"],
-    "Estrategia": "Texto corto aquí"
-  }}
-]
-
-No agregues explicaciones.
-Solo JSON válido.
-"""
-
-    response = chat.send_message(prompt)
-    end_time = time.time()
-
-    return jsonify({"result": response.text, "time_taken": end_time - start_time})
+    return jsonify(result)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
