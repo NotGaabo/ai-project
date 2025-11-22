@@ -1,2 +1,0 @@
-Order Reference,Customer Name,Order Date,Expected Delivery,Salesperson,Payment Terms,Status,Warehouse,Source Location,Destination Location,Product,Quantity,Unit Price,Subtotal,Tax Amount,Total Amount
-SO001,Juan Pérez López,2025-01-01,2025-01-08,Vendedor 2,30 Days,sale,WH,WH/Stock,Partners/Customers,Bacon Burger,5,8.33,41.65,6.66,48.31
